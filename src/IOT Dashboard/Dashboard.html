@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeCare - IoT Monitor System</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        :root {
+            --white: #ffffff;
+            --primary-green: #52b788;
+            --deep-blue: #1e40af;
+            --light-bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-dark: #1e293b;
+            --text-muted: #64748b;
+            --border-light: #e2e8f0;
+        }
+
+        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+
+        body {
+            background: var(--light-bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+            color: var(--text-dark);
+            margin: 0;
+            padding: 40px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        /* Header - Clean white with subtle shadow */
+        header {
+            background: var(--white);
+            border-radius: 40px;
+            padding: 30px 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+            border-bottom: 5px solid var(--primary-green);
+        }
+
+        .logo-container img {
+            max-height: 200px;
+            width: auto;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+            transition: transform 0.4s ease;
+        }
+
+        .logo-container img:hover { transform: scale(1.05); }
+
+        .status-pill {
+            background: rgba(82, 183, 136, 0.12);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(82, 183, 136, 0.3);
+            padding: 12px 30px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-weight: 600;
+            color: var(--deep-blue);
+            font-size: 15px;
+        }
+
+        .dot {
+            width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted); transition: 0.4s;
+        }
+
+        .connected .dot {
+            background: var(--primary-green);
+            box-shadow: 0 0 20px rgba(82, 183, 136, 0.6);
+        }
+
+        /* Vitals Cards */
+        .vitals-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 35px;
+        }
+
+        .vital-card {
+            background: var(--card-bg);
+            border-radius: 40px;
+            padding: 50px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .vital-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 6px;
+            background: var(--primary-green);
+        }
+
+        .vital-card:hover {
+            transform: translateY(-12px);
+            box-shadow: 0 25px 50px rgba(82, 183, 136, 0.18);
+        }
+
+        .vital-card i {
+            font-size: 64px;
+            color: var(--primary-green);
+            margin-bottom: 30px;
+            display: block;
+        }
+
+        .vital-label {
+            font-size: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2.5px;
+            color: var(--text-muted);
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .vital-value {
+            font-size: 92px;
+            font-weight: 800;
+            margin: 12px 0;
+            color: var(--text-dark);
+            display: flex;
+            align-items: baseline;
+        }
+
+        .vital-unit {
+            font-size: 30px;
+            font-weight: 400;
+            margin-left: 12px;
+            color: var(--text-muted);
+        }
+
+        .vital-status {
+            color: var(--deep-blue);
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        /* System Grid */
+        .system-grid {
+            display: grid;
+            grid-template-columns: 1.7fr 1fr;
+            gap: 35px;
+        }
+
+        .panel-card {
+            background: var(--card-bg);
+            border-radius: 40px;
+            padding: 40px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel-card h2 {
+            margin: 0 0 30px 0;
+            font-size: 28px;
+            color: var(--text-dark);
+        }
+
+        /* Lock Overlay - Uses green + blue as highlights only */
+        .lock-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            transition: all 0.6s ease;
+            border: 3px solid var(--primary-green);
+        }
+
+        .lock-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(1.05);
+        }
+
+        .lock-overlay i {
+            font-size: 80px;
+            color: var(--deep-blue);
+            margin-bottom: 20px;
+        }
+
+        .lock-overlay h2 {
+            color: var(--deep-blue);
+            margin: 0 0 10px 0;
+        }
+
+        .lock-overlay p {
+            color: var(--text-muted);
+            margin-bottom: 30px;
+        }
+
+        .ios-input {
+            background: rgba(82, 183, 136, 0.1);
+            border: 2px solid var(--primary-green);
+            padding: 22px;
+            border-radius: 24px;
+            color: var(--text-dark);
+            font-size: 22px;
+            width: 360px;
+            text-align: center;
+            margin: 30px 0;
+            outline: none;
+        }
+
+        .ios-input::placeholder { color: var(--text-muted); }
+
+        .ios-button {
+            background: var(--primary-green);
+            color: var(--white);
+            border: none;
+            padding: 20px 60px;
+            border-radius: 30px;
+            font-weight: 700;
+            font-size: 17px;
+            cursor: pointer;
+            transition: 0.4s;
+        }
+
+        .ios-button:hover {
+            background: var(--deep-blue);
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+        }
+
+        .cmd-btn {
+            background: rgba(82, 183, 136, 0.06);
+            border: 1px solid rgba(82, 183, 136, 0.25);
+            padding: 35px;
+            border-radius: 30px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.4s;
+        }
+
+        .cmd-btn:hover {
+            background: var(--primary-green);
+            color: white;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(82, 183, 136, 0.3);
+        }
+
+        .cmd-btn i {
+            font-size: 40px;
+            margin-bottom: 15px;
+            display: block;
+            color: var(--deep-blue);
+        }
+
+        .cmd-btn span {
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .cmd-btn:hover i,
+        .cmd-btn:hover span {
+            color: white;
+        }
+
+        /* Terminal */
+        .terminal {
+            background: #0f172a;
+            border-radius: 28px;
+            padding: 30px;
+            height: 420px;
+            overflow-y: auto;
+            font-family: "SF Mono", Menlo, monospace;
+            font-size: 14px;
+            color: #94a3b8;
+            line-height: 1.9;
+        }
+
+        .terminal b {
+            color: var(--primary-green);
+        }
+
+        @keyframes heartbeat {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(0.9); }
+        }
+
+        .pulse { animation: heartbeat 1.6s infinite ease-in-out; }
+
+        @media (max-width: 1024px) {
+            .system-grid { grid-template-columns: 1fr; }
+            header { flex-direction: column; gap: 25px; text-align: center; }
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 20px; }
+            .vitals-container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-container">
+            <img src="Gemini_Generated_Image_1ae81w1ae81w1ae8.png" alt="MedPulse Pro Logo">
+        </div>
+
+        <div class="status-pill" id="conn-status">
+            <div class="dot"></div>
+            <span id="conn-text">BROKER: DISCONNECTED</span>
+        </div>
+    </header>
+
+    <div class="vitals-container">
+        <div class="vital-card">
+            <i class="fas fa-heartbeat pulse"></i>
+            <div class="vital-label">Cardiac Frequency</div>
+            <div class="vital-value" id="hr">-- <span class="vital-unit">BPM</span></div>
+            <div class="vital-status">● Live ECG Stream</div>
+        </div>
+
+        <div class="vital-card">
+            <i class="fas fa-thermometer-half"></i>
+            <div class="vital-label">Thermal Index</div>
+            <div class="vital-value" id="temp">-- <span class="vital-unit">°C</span></div>
+            <div class="vital-status">● Internal Sensor</div>
+        </div>
+
+        <div class="vital-card">
+            <i class="fas fa-wind"></i>
+            <div class="vital-label">Oxygen Saturation</div>
+            <div class="vital-value" id="spo2">-- <span class="vital-unit">%</span></div>
+            <div class="vital-status">● Pulse Oximetry</div>
+        </div>
+    </div>
+
+    <div class="system-grid">
+        <div class="panel-card">
+            <div class="lock-overlay" id="lock-screen">
+                <i class="fas fa-shield-halved"></i>
+                <h2>Security Required</h2>
+                <p>Enter administrative key to access controls</p>
+                <input type="password" id="pass-field" class="ios-input" placeholder="Passcode">
+                <button id="unlock-btn" class="ios-button" onclick="verify()">Unlock System</button>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Control Center</h2>
+                <button onclick="lock()" style="background:none; border:none; color:var(--deep-blue); cursor:pointer; font-weight:bold; font-size:18px;">
+                    <i class="fas fa-lock"></i> LOCK
+                </button>
+            </div>
+
+            <div class="control-grid">
+                <div class="cmd-btn" onclick="sendCommand('START')">
+                    <i class="fas fa-power-off"></i>
+                    <span>Initialize Monitoring</span>
+                </div>
+                <div class="cmd-btn" onclick="sendCommand('CALIB')">
+                    <i class="fas fa-compass"></i>
+                    <span>Calibrate Sensors</span>
+                </div>
+                <div class="cmd-btn" onclick="sendCommand('SOS')">
+                    <i class="fas fa-phone-alt"></i>
+                    <span>Emergency Call</span>
+                </div>
+                <div class="cmd-btn" onclick="sendCommand('REBOOT')">
+                    <i class="fas fa-sync"></i>
+                    <span>Reboot Hardware</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-card">
+            <h2>System Logs</h2>
+            <div class="terminal" id="terminal">
+                <b>[SYSTEM]</b> Welcome to TeCare v1.0.0<br>
+                <b>[SYSTEM]</b> Kernel initialized successfully...<br>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const AUTH_SERVER = 'http://192.168.8.156:3000/verify';
+        const BROKER = 'ws://192.168.8.191:9001';
+        const TOPIC = 'IoT_Dev_1.0';
+        let client;
+
+        async function verify() {
+            const password = document.getElementById('pass-field').value;
+            const btn = document.getElementById('unlock-btn');
+            btn.innerText = "Verifying...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(AUTH_SERVER, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    document.getElementById('lock-screen').classList.add('hidden');
+                    addLog("AUTH", "Administrative access granted.");
+                    initMQTT();
+                } else {
+                    alert("Access Denied: Invalid Passcode");
+                    addLog("SEC", "Unauthorized access attempt.");
+                }
+            } catch (err) {
+                alert("Server unreachable. Check IP or network.");
+                addLog("ERR", "Failed to connect to authentication server.");
+            } finally {
+                btn.innerText = "Unlock System";
+                btn.disabled = false;
+            }
+        }
+
+        function initMQTT() {
+            client = mqtt.connect(BROKER);
+
+            client.on('connect', () => {
+                document.getElementById('conn-status').classList.add('connected');
+                document.getElementById('conn-text').innerText = 'SECURE CLOUD: ONLINE';
+                client.subscribe(TOPIC);
+                addLog("NET", "Secure MQTT connection established.");
+            });
+
+            client.on('message', (topic, msg) => {
+                try {
+                    const d = JSON.parse(msg.toString());
+                    if (d.heart_rate) document.getElementById('hr').innerHTML = `${d.heart_rate} <span class="vital-unit">BPM</span>`;
+                    if (d.temperature) document.getElementById('temp').innerHTML = `${parseFloat(d.temperature).toFixed(1)} <span class="vital-unit">°C</span>`;
+                    if (d.oxygen_level) document.getElementById('spo2').innerHTML = `${d.oxygen_level} <span class="vital-unit">%</span>`;
+                } catch (e) {
+                    console.error("Invalid payload:", e);
+                }
+            });
+
+            client.on('error', (err) => {
+                addLog("ERR", "MQTT connection failed.");
+            });
+        }
+
+        function lock() {
+            document.getElementById('lock-screen').classList.remove('hidden');
+            document.getElementById('pass-field').value = "";
+            addLog("SYS", "System locked manually.");
+            if (client) client.end(true);
+            document.getElementById('conn-status').classList.remove('connected');
+            document.getElementById('conn-text').innerText = 'BROKER: DISCONNECTED';
+        }
+
+        function sendCommand(cmd) {
+            if (client && client.connected) {
+                client.publish('/patient/control', JSON.stringify({ action: cmd, timestamp: Date.now() }));
+                addLog("CMD", `Sent command: ${cmd}`);
+            } else {
+                addLog("ERR", "No active connection.");
+            }
+        }
+
+        function addLog(tag, text) {
+            const time = new Date().toLocaleTimeString();
+            const terminal = document.getElementById('terminal');
+            terminal.innerHTML += `<b>[${time}] [${tag}]</b> ${text}<br>`;
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    </script>
+</body>
+</html>
